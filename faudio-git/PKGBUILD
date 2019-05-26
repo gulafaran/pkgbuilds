@@ -40,6 +40,7 @@ build() {
     -DFFMPEG=ON
   make
 
+  printf 'now building lib32-faudio-git\n'
 
   cd "$srcdir/build-32"
 

@@ -1,0 +1,152 @@
+pkgbase=mesa-git
+pkgname=(mesa-git lib32-mesa-git)
+pkgdesc="an open-source implementation of the OpenGL specification, git version"
+pkgver=19.2.0_devel.111216.659aa3dd651
+pkgrel=1
+arch=('x86_64')
+
+makedepends=('git' 'python-mako' 'xorgproto' 'llvm-git' 'lib32-llvm-git' 'clang-git' 'lib32-gcc-libs' 'lib32-libvdpau'
+              'libxml2' 'libx11' 'libvdpau' 'libva' 'elfutils' 'libomxil-bellagio' 'libxrandr' 'lib32-libelf' 'lib32-libgcrypt'
+              'ocl-icd' 'vulkan-icd-loader' 'libgcrypt' 'wayland' 'wayland-protocols' 'meson' 'ninja' 'lib32-systemd' 'lib32-wayland'
+              'lib32-libglvnd' 'lib32-libva' 'lib32-libxrandr' 'lib32-libxml2' 'lib32-libx11')
+
+optdepends=('opengl-man-pages: for the OpenGL API man pages')
+
+url="https://www.mesa3d.org"
+license=('custom')
+
+source=('mesa::git://anongit.freedesktop.org/mesa/mesa'
+        'LICENSE'
+        'llvm32.native'
+        'shutup.patch')
+md5sums=('SKIP'
+         'SKIP'
+         'SKIP'
+         'SKIP')
+
+prepare() {
+  cd mesa
+  patch -p1 -i ../shutup.patch
+  mkdir -p build build-32
+}
+
+pkgver() {
+  cd mesa
+  read -r _ver <VERSION
+  echo ${_ver/-/_}.$(git rev-list --count HEAD).$(git rev-parse --short HEAD)
+}
+
+build () {
+  meson setup mesa build \
+    -D b_ndebug=true \
+    -D buildtype=plain \
+    --wrap-mode=nofallback \
+    -D prefix=/usr \
+    -D sysconfdir=/etc \
+    -D platforms=x11,wayland,drm,surfaceless \
+    -D gallium-drivers=radeonsi,swrast \
+    -D vulkan-drivers=amd \
+    -D dri3=true \
+    -D egl=true \
+    -D gallium-extra-hud=true \
+    -D gallium-nine=true \
+    -D gallium-omx=bellagio \
+    -D gallium-va=true \
+    -D gallium-vdpau=true \
+    -D gallium-xvmc=false \
+    -D gbm=true \
+    -D gles1=true \
+    -D gles2=true \
+    -D glvnd=true \
+    -D glx=dri \
+    -D libunwind=true \
+    -D llvm=true \
+    -D lmsensors=true \
+    -D osmesa=gallium \
+    -D shared-glapi=true \
+    -D gallium-opencl=icd \
+    -D valgrind=false \
+    -D vulkan-overlay-layer=true \
+    -D tools=[]
+
+  meson configure build
+  ninja -C build
+
+  printf 'now building lib32-mesa-git\n'
+
+  export CC="gcc -m32"
+  export CXX="g++ -m32"
+  export PKG_CONFIG=/usr/bin/pkg-config-32
+
+  meson setup mesa build-32 \
+    --native-file llvm32.native \
+    -D b_ndebug=true \
+    -D buildtype=plain \
+    --wrap-mode=nofallback \
+    -D prefix=/usr \
+    -D sysconfdir=/etc \
+    --libdir=/usr/lib32 \
+    -D platforms=x11,wayland,drm,surfaceless \
+    -D gallium-drivers=radeonsi,swrast \
+    -D vulkan-drivers=amd \
+    -D dri3=true \
+    -D egl=true \
+    -D gallium-extra-hud=true \
+    -D gallium-nine=true \
+    -D gallium-omx=bellagio \
+    -D gallium-va=true \
+    -D gallium-vdpau=true \
+    -D gallium-xvmc=false \
+    -D gbm=true \
+    -D gles1=true \
+    -D gles2=true \
+    -D glvnd=true \
+    -D glx=dri \
+    -D libunwind=true \
+    -D llvm=true \
+    -D lmsensors=true \
+    -D osmesa=gallium \
+    -D shared-glapi=true \
+    -D valgrind=false \
+    -D tools=[]
+
+  meson configure build-32
+  ninja -C build-32
+}
+
+
+package_mesa-git() {
+  depends=('libdrm' 'libxxf86vm' 'libxdamage' 'libxshmfence' 'libelf' 'libomxil-bellagio'
+           'libunwind' 'libglvnd' 'wayland' 'lm_sensors' 'libclc' 'glslang')
+  provides=("mesa=$pkgver-$pkgrel" "vulkan-intel=$pkgver-$pkgrel" "vulkan-radeon=$pkgver-$pkgrel"
+            "libva-mesa-driver=$pkgver-$pkgrel" "mesa-vdpau=$pkgver-$pkgrel" "vulkan-driver=$pkgver-$pkgrel"
+            "opencl-mesa=$pkgver-$pkgrel" 'opengl-driver' 'opencl-driver')
+  conflicts=('mesa' 'opencl-mesa' 'vulkan-intel' 'vulkan-radeon' 'libva-mesa-driver' 'mesa-vdpau')
+
+  DESTDIR="$pkgdir" ninja -C build install
+
+  # indirect rendering
+  ln -s /usr/lib/libGLX_mesa.so.0 ${pkgdir}/usr/lib/libGLX_indirect.so.0
+
+  install -Dt "$pkgdir"/usr/share/licenses/$pkgname "$srcdir"/LICENSE
+}
+
+package_lib32-mesa-git() {
+  depends=('mesa-git' 'lib32-gcc-libs' 'lib32-libdrm' 'lib32-wayland' 'lib32-libxxf86vm' 'lib32-llvm-libs-git'
+           'lib32-libxdamage' 'lib32-libxshmfence' 'lib32-elfutils' 'lib32-libunwind' 'lib32-lm_sensors' 'glslang')
+  provides=("lib32-mesa=$pkgver-$pkgrel" "lib32-vulkan-intel=$pkgver-$pkgrel" "lib32-vulkan-radeon=$pkgver-$pkgrel"
+            "lib32-libva-mesa-driver=$pkgver-$pkgrel" "lib32-mesa-vdpau=$pkgver-$pkgrel" 'lib32-opengl-driver')
+  conflicts=('lib32-mesa' 'lib32-vulkan-intel' 'lib32-vulkan-radeon' 'lib32-libva-mesa-driver' 'lib32-mesa-vdpau')
+
+  DESTDIR="$pkgdir" ninja -C build-32 install
+
+  # remove files provided by mesa-git
+  rm -rf "$pkgdir"/etc
+  rm -rf "$pkgdir"/usr/include
+  rm -rf "$pkgdir"/usr/share/glvnd/
+  rm -rf "$pkgdir"/usr/share/drirc.d/
+  rm -rf "$pkgdir"/usr/share/vulkan/explicit_layer.d
+
+  # indirect rendering
+  ln -s /usr/lib32/libGLX_mesa.so.0 "${pkgdir}/usr/lib32/libGLX_indirect.so.0"
+}
