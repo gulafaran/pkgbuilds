@@ -1,0 +1,19 @@
+pkgbase = faudio-git
+	pkgdesc = XAudio2 reimplementation
+	pkgver = 19.05.r13.g3dd4e04
+	pkgrel = 1
+	url = https://github.com/FNA-XNA/FAudio/
+	arch = x86_64
+	license = custom:zlib
+	makedepends = git
+	makedepends = cmake
+	depends = sdl2
+	depends = ffmpeg
+	provides = faudio
+	source = git+https://github.com/FNA-XNA/FAudio
+	source = faudio.pc
+	sha256sums = SKIP
+	sha256sums = f818d65ac8bb142593d87efca3585b0ec9688e79fbed2b5b9ca8c59beb283e7a
+
+pkgname = faudio-git
+

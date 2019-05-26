@@ -1,0 +1,205 @@
+pkgbase=glibc-git
+pkgname=(glibc-git lib32-glibc-git)
+pkgver=2.29.9000.r285.g5c23c82195
+pkgrel=1
+
+pkgdesc='gnu c library'
+url='http://www.gnu.org/software/libc'
+arch=('x86_64')
+groups=('base')
+license=('GPL' 'LGPL')
+
+options=('!strip' 'staticlibs')
+backup=('etc/gai.conf' 'etc/nscd.conf')
+install='glibc-git.install'
+
+depends=('linux-api-headers' 'tzdata' 'filesystem')
+optdepends=('gd: graph image generation with memusage'
+            'sh: needed to run locale-gen script')
+makedepends=('git')
+
+source=('git+https://sourceware.org/git/glibc.git'
+        'locale-gen'
+        'lib32-glibc.conf'
+        'nscd.service'
+        'nscd.tmpfiles')
+
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+pkgver() {
+  cd glibc
+  git describe | sed 's/^glibc-//; s/-/.r/; s/-/./'
+}
+
+prepare() {
+  cd glibc
+  mkdir -p build build-32
+}
+
+build() {
+  cd "$srcdir/glibc/build"
+
+  { printf 'slibdir=/usr/lib\n'
+    printf 'rtlddir=/usr/lib\n'
+    printf 'sbindir=/usr/bin\n'
+    printf 'rootsbindir=/usr/bin\n'
+  } >> configparms
+
+  CPPFLAGS=${CPPFLAGS/-D_FORTIFY_SOURCE=2/}
+  CFLAGS=${CFLAGS/-fno-plt/}
+  CXXFLAGS=${CXXFLAGS/-fno-plt/}
+  # This is handled properly by --enable-bind-now
+  LDFLAGS=${LDFLAGS/,-z,now/}
+
+  "$srcdir"/glibc/configure \
+      --prefix=/usr \
+      --libdir=/usr/lib \
+      --libexecdir=/usr/lib \
+      --with-headers=/usr/include \
+      --with-bugurl=https://bugs.archlinux.org/ \
+      --enable-cet \
+      --enable-bind-now \
+      --enable-multi-arch \
+      --enable-static-pie \
+      --enable-lock-elision \
+      --enable-stack-protector=strong \
+      --enable-stackguard-randomization \
+      --enable-add-ons \
+      --disable-werror \
+      --disable-profile
+
+  printf 'build-programs=no\n' >> configparms
+  make
+
+  # Re-enable hardening for programs.
+  sed -i '/build-programs=/s/no/yes/' configparms
+  { printf 'CC += -D_FORTIFY_SOURCE=2\n'
+    printf 'CXX += -D_FORTIFY_SOURCE=2\n'
+  } >> configparms
+  make
+
+  printf 'now building lib32-glibc-git\n'
+  cd "$srcdir/glibc/build-32"
+
+  { printf 'slibdir=/usr/lib32\n'
+    printf 'rtlddir=/usr/lib32\n'
+    printf 'sbindir=/usr/bin\n'
+    printf 'rootsbindir=/usr/bin\n'
+  } >> configparms
+
+  export CC="gcc -m32 -mstackrealign"
+  export CXX="g++ -m32 -mstackrealign"
+
+  CPPFLAGS=${CPPFLAGS/-D_FORTIFY_SOURCE=2/}
+  CFLAGS=${CFLAGS/-fno-plt/}
+  CXXFLAGS=${CXXFLAGS/-fno-plt/}
+
+  # This is handled properly by --enable-bind-now
+  LDFLAGS=${LDFLAGS/,-z,now/}
+
+  "$srcdir"/glibc/configure \
+      --host=i686-pc-linux-gnu \
+      --prefix=/usr \
+      --libdir=/usr/lib32 \
+      --libexecdir=/usr/lib32 \
+      --with-headers=/usr/include \
+      --with-bugurl=https://bugs.archlinux.org/ \
+      --enable-cet \
+      --enable-bind-now \
+      --enable-multi-arch \
+      --enable-static-pie \
+      --enable-lock-elision \
+      --enable-stack-protector=strong \
+      --enable-stackguard-randomization \
+      --enable-add-ons \
+      --disable-werror \
+      --disable-profile
+
+  printf 'build-programs=no\n' >> configparms
+  make
+
+  # Re-enable hardening for programs.
+  sed -i '/build-programs=/s/no/yes/' configparms
+  { printf 'CC += -D_FORTIFY_SOURCE=2\n'
+    printf 'CXX += -D_FORTIFY_SOURCE=2\n'
+  } >> configparms
+  make
+}
+
+package_glibc-git() {
+  provides=("glibc=${pkgver%.*.*.*}")
+  conflicts=('glibc')
+
+  cd glibc/build
+  make install_root="$pkgdir" install
+
+  install -dm0755 "$pkgdir"/usr/lib/locale
+  install -dm0755 "$pkgdir"/etc/locales
+  install -Dm0755 "$srcdir"/locale-gen "$pkgdir"/usr/bin/locale-gen
+  install -Dm0644 "$srcdir"/glibc/posix/gai.conf "$pkgdir"/etc/gai.conf
+  install -Dm0644 "$srcdir"/glibc/nscd/nscd.conf "$pkgdir"/etc/nscd.conf
+  install -Dm0644 "$srcdir"/nscd.tmpfiles "$pkgdir"/usr/lib/tmpfiles.d/nscd.conf
+  install -Dm0644 "$srcdir"/nscd.service "$pkgdir"/usr/lib/systemd/system/nscd.service
+
+  # Only support UTF-8 charmaps.
+  find "$pkgdir"/usr/share/i18n/charmaps ! -name UTF-8.gz -type f -delete
+
+  # We generate these in the post-install with ldconfig -r .
+  rm -f "$pkgdir"/etc/ld.so.cache
+
+  # I use 2> /dev/null for all of these due to many false-positives as it
+  # attempts to strip scripts or other unstrippable files.
+  find "$pkgdir"/usr/bin -type f -executable -exec strip $STRIP_BINARIES {} + 2> /dev/null || true
+
+  # Do not strip these for gdb and valgrind functionality, but strip the
+  # rest.
+  if check_option 'debug' n; then
+    find "$pkgdir"/usr/lib ! -name 'ld-*.so' \
+                           ! -name 'libc-*.so' \
+                           ! -name 'libpthread-*.so' \
+                           ! -name 'libthread_db-*.so' \
+                             -name '*-*.so' -type f -exec strip $STRIP_SHARED {} + 2> /dev/null || true
+
+    # Strip the remaining static libraries.
+    find "$pkgdir"/usr/lib -name '*.a' -type f -exec strip $STRIP_STATIC {} + 2> /dev/null || true
+  fi
+  # Provided by tzdata now.
+  rm -f "$pkgdir"/usr/bin/tzselect "$pkgdir"/usr/bin/zdump "$pkgdir"/usr/bin/zic
+}
+
+package_lib32-glibc-git() {
+  provides=("lib32-glibc=${pkgver%.*.*.*}")
+  conflicts=('lib32-glibc')
+
+  cd glibc/build-32
+  make install_root="$pkgdir" install
+  rm -rf "$pkgdir"/{etc,sbin,usr/{bin,sbin,share},var}
+
+  # We need to keep 32 bit specific header files
+  find "$pkgdir/usr/include" -type f -not -name '*-32.h' -delete
+
+  # Dynamic linker
+  install -d "$pkgdir/usr/lib"
+  ln -s ../lib32/ld-linux.so.2 "$pkgdir/usr/lib/"
+
+  # Add lib32 paths to the default library search path
+  install -Dm644 "$srcdir/lib32-glibc.conf" "$pkgdir/etc/ld.so.conf.d/lib32-glibc.conf"
+
+  # Symlink /usr/lib32/locale to /usr/lib/locale
+  ln -s ../lib/locale "$pkgdir/usr/lib32/locale"
+
+  if check_option 'debug' n; then
+    find "$pkgdir"/usr/lib ! -name 'ld-*.so' \
+                           ! -name 'libc-*.so' \
+                           ! -name 'libpthread-*.so' \
+                           ! -name 'libthread_db-*.so' \
+                             -name '*-*.so' -type f -exec strip $STRIP_SHARED {} + 2> /dev/null || true
+
+    # Strip the remaining static libraries.
+    find "$pkgdir"/usr/lib -name '*.a' -type f -exec strip $STRIP_STATIC {} + 2> /dev/null || true
+  fi
+}
