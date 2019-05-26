@@ -1,0 +1,64 @@
+pkgbase=libdrm-git
+pkgname=(libdrm-git lib32-libdrm-git)
+pkgver=2.4.98.r16.g922d9299
+pkgrel=1
+pkgdesc="Userspace interface to kernel DRM services, master git version"
+arch=(x86_64)
+license=('custom')
+makedepends=('gcc-multilib' 'libxslt' 'docbook-xsl' 'meson')
+url="http://dri.freedesktop.org/"
+
+source=('libdrm::git://anongit.freedesktop.org/mesa/drm#branch=master'
+        COPYING)
+sha512sums=('SKIP'
+            'SKIP')
+
+prepare() {
+  cd libdrm
+  mkdir -p build build-32
+}
+
+pkgver() {
+  cd libdrm
+  git describe --long --abbrev=8 | sed 's/^libdrm-//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+build() {
+  meson setup libdrm build \
+    --prefix /usr \
+    --buildtype plain \
+    --wrap-mode nofallback \
+    -D udev=true
+  ninja -C build
+
+  export CC="gcc -m32"
+  export CXX="g++ -m32"
+  export PKG_CONFIG=/usr/bin/pkg-config-32
+  meson setup libdrm build-32 \
+    --prefix /usr \
+    --libdir lib32 \
+    --buildtype plain \
+    --wrap-mode nofallback \
+    -D udev=true
+  ninja -C build-32
+}
+
+package_libdrm-git() {
+  provides=('libdrm')
+  conflicts=('libdrm')
+  depends=('libpciaccess')
+
+  DESTDIR="$pkgdir" ninja -C build install
+  install -Dt "$pkgdir/usr/share/licenses/$pkgname" -m644 COPYING
+}
+
+package_lib32-libdrm-git() {
+  provides=('lib32-libdrm')
+  conflicts=('lib32-libdrm')
+  depends=('libdrm-git' 'lib32-libpciaccess')
+
+  DESTDIR="$pkgdir" ninja -C build-32 install
+  rm -rf "$pkgdir"/usr/{include,share,bin}
+
+  install -Dt "$pkgdir/usr/share/licenses/$pkgname" -m644 COPYING
+}
