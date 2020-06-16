@@ -1,0 +1,15 @@
+pkgname=intel-ucode-old
+provides=('intel-ucode')
+conflicts=('intel-ucode')
+replaces=('intel-ucode')
+pkgver=20171117
+pkgrel=1
+
+pkgdesc="intel ucode before mitigations, download url's gone so its the .img"
+arch=('x86_64')
+source=('intel-ucode.img')
+md5sums=('40cc65c5631b924743ab8d31ef98df43')
+
+package() {
+  install -Dm644 intel-ucode.img -t "$pkgdir/boot/"
+}
